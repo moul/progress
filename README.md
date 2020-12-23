@@ -45,6 +45,10 @@ func (p *Progress) MarshalJSON() ([]byte, error)
     MarshalJSON is a custom JSON marshaler that automatically computes and
     append the current snapshot.
 
+func (p *Progress) Percent() float64
+    Percent returns the current completion percentage, it's a faster alternative
+    to Progress.Snapshot().Percent.
+
 func (p *Progress) SafeAddStep(id string) (*Step, error)
     SafeAddStep is equivalent to AddStep with but returns error instead of
     panicking.
@@ -101,6 +105,9 @@ func (s *Step) Duration() time.Duration
 func (s *Step) MarshalJSON() ([]byte, error)
     MarshalJSON is a custom JSON marshaler that automatically computes and
     append some runtime metadata.
+
+func (s *Step) SetAsCurrent()
+    SetAsCurrent stops all in-progress steps and start this one.
 
 func (s *Step) SetData(data interface{}) *Step
     SetData sets a custom step data. It returns itself (*Step) for chaining.

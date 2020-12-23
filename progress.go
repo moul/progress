@@ -156,13 +156,8 @@ func (p *Progress) Snapshot() Snapshot {
 		case StateInProgress:
 			snapshot.InProgress++
 			doing = append(doing, step.title())
-			// in-progress task count as partially done
-			snapshot.Percent += (float64(0.5) / float64(snapshot.Total)) * 100 // nolint:gomnd
-			// FIXME: support per-task progress
-			// FIXME: compute the longest active step.Duration
 		case StateDone:
 			snapshot.Completed++
-			snapshot.Percent += (float64(1) / float64(snapshot.Total)) * 100 // nolint:gomnd
 		default:
 			panic(fmt.Sprintf("step is in an unexpected state: %s", u.JSON(step)))
 		}
@@ -185,6 +180,8 @@ func (p *Progress) Snapshot() Snapshot {
 			}
 		}
 	}
+
+	snapshot.Percent = p.Percent()
 
 	// compute top-level aggregates
 	{
@@ -228,6 +225,27 @@ func (p *Progress) MarshalJSON() ([]byte, error) {
 		alias:    (*alias)(p),
 		Snapshot: p.Snapshot(),
 	})
+}
+
+// Percent returns the current completion percentage, it's a faster alternative to Progress.Snapshot().Percent.
+func (p *Progress) Percent() float64 {
+	total := len(p.Steps)
+	percent := float64(0)
+	for _, step := range p.Steps {
+		switch step.State {
+		case StateNotStarted:
+			// noop
+		case StateInProgress:
+			// in-progress task count as partially done
+			percent += (float64(0.5) / float64(total)) * 100 // nolint:gomnd
+			// FIXME: support per-task progress
+		case StateDone:
+			percent += (float64(1) / float64(total)) * 100 // nolint:gomnd
+		default:
+			panic(fmt.Sprintf("step is in an unexpected state: %s", u.JSON(step)))
+		}
+	}
+	return percent
 }
 
 func (p *Progress) isDone() bool {
