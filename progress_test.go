@@ -205,3 +205,32 @@ func TestFlow(t *testing.T) {
 	// debug
 	// fmt.Println(u.PrettyJSON(prog))
 }
+
+func TestSubscribe(t *testing.T) {
+	prog := progress.New()
+	done := make(chan bool)
+	ch := make(chan *progress.Step, 0)
+	prog.Subscribe(ch)
+	seen := 0
+	go func() {
+		for step := range ch {
+			seen++
+			if step == nil {
+				done <- true
+			}
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+	prog.AddStep("step1").SetDescription("hello")
+	prog.AddStep("step2")
+	prog.Get("step1").Start()
+	prog.Get("step2").Done()
+	prog.AddStep("step3")
+	prog.Get("step3").Start()
+	prog.Get("step1").Done()
+	prog.Get("step3").Done()
+	// fmt.Println(u.PrettyJSON(prog))
+	<-done
+	close(ch)
+	require.Equal(t, seen, 10)
+}

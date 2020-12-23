@@ -16,7 +16,8 @@ type Progress struct {
 	Steps     []*Step   `json:"steps,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 
-	mutex sync.RWMutex
+	mutex       sync.RWMutex
+	subscribers []chan *Step
 }
 
 type State string
@@ -68,10 +69,35 @@ func (p *Progress) SafeAddStep(id string) (*Step, error) {
 	}
 
 	p.Steps = append(p.Steps, step)
+	p.publishStep(step)
 	return step, nil
 }
 
-// Get retrieve a Step by its 'id'.
+// publishStep iterates over subscribers and try to append a step.
+func (p *Progress) publishStep(step *Step) {
+	var stepCopyPtr *Step
+	if step != nil {
+		stepCopy := *step
+		stepCopyPtr = &stepCopy
+	}
+	for _, subscriber := range p.subscribers {
+		subscriber <- stepCopyPtr
+	}
+}
+
+// Subscribe register a provided chan as a target called each time a step is changed.
+func (p *Progress) Subscribe(subscriber chan *Step) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if p.subscribers == nil {
+		p.subscribers = make([]chan *Step, 0)
+	}
+
+	p.subscribers = append(p.subscribers, subscriber)
+}
+
+// Get retrieves a Step by its 'id'.
 // A non-empty 'id' is required, else it will panic.
 // If 'id' does not match an existing step, nil is returned.
 func (p *Progress) Get(id string) *Step {
@@ -204,6 +230,18 @@ func (p *Progress) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (p *Progress) isDone() bool {
+	if len(p.Steps) == 0 {
+		return false
+	}
+	for _, step := range p.Steps {
+		if step.State != StateDone {
+			return false
+		}
+	}
+	return true
+}
+
 // Step represents a progress step.
 // It always have an 'id' and can be customized using helpers.
 type Step struct {
@@ -221,6 +259,7 @@ type Step struct {
 // It returns itself (*Step) for chaining.
 func (s *Step) SetDescription(desc string) *Step {
 	s.Description = desc
+	s.parent.publishStep(s)
 	return s
 }
 
@@ -228,12 +267,15 @@ func (s *Step) SetDescription(desc string) *Step {
 // It returns itself (*Step) for chaining.
 func (s *Step) SetData(data interface{}) *Step {
 	s.Data = data
+	s.parent.publishStep(s)
 	return s
 }
 
 // Start marks a step as started.
 // If a step was already InProgress or Done, it panics.
 func (s *Step) Start() {
+	s.parent.mutex.Lock()
+	defer s.parent.mutex.Unlock()
 	if s.State == StateInProgress {
 		panic("cannot Step.Start() an already in-progress step.")
 	}
@@ -243,12 +285,14 @@ func (s *Step) Start() {
 	s.State = StateInProgress
 	now := time.Now()
 	s.StartedAt = &now
-	// fixme: announce to parent
+	s.parent.publishStep(s)
 }
 
 // Done marks a step as done.
 // If the step was already done, it panics.
 func (s *Step) Done() {
+	s.parent.mutex.Lock()
+	defer s.parent.mutex.Unlock()
 	if s.State == StateDone {
 		panic("cannot Step.Done() an already done step.")
 	}
@@ -258,7 +302,10 @@ func (s *Step) Done() {
 		s.StartedAt = &now
 	}
 	s.DoneAt = &now
-	// fixme: announce to parent
+	s.parent.publishStep(s)
+	if s.parent.isDone() {
+		s.parent.publishStep(nil)
+	}
 }
 
 // MarshalJSON is a custom JSON marshaler that automatically computes and append some runtime metadata.
