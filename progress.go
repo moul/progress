@@ -288,6 +288,29 @@ func (s *Step) Start() {
 	s.parent.publishStep(s)
 }
 
+// SetAsCurrent stops all in-progress steps and start this one.
+func (s *Step) SetAsCurrent() {
+	s.parent.mutex.Lock()
+	defer s.parent.mutex.Unlock()
+	if s.State == StateInProgress {
+		panic("cannot Step.Start() an already in-progress step.")
+	}
+	if s.State == StateDone {
+		panic("cannot Step.Start() an already done step.")
+	}
+	now := time.Now()
+	for _, step := range s.parent.Steps {
+		if step.State == StateInProgress {
+			step.State = StateDone
+			step.DoneAt = &now
+			s.parent.publishStep(step)
+		}
+	}
+	s.State = StateInProgress
+	s.StartedAt = &now
+	s.parent.publishStep(s)
+}
+
 // Done marks a step as done.
 // If the step was already done, it panics.
 func (s *Step) Done() {

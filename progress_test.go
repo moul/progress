@@ -202,6 +202,22 @@ func TestFlow(t *testing.T) {
 		require.True(t, snapshot.TotalDuration > 400*time.Millisecond && snapshot.TotalDuration < 600*time.Millisecond)
 	}
 
+	// create 3 new steps to test the Step.SetAsCurrent() helper
+	{
+		prog.AddStep("step5")
+		prog.AddStep("step6")
+		prog.AddStep("step7")
+		require.Equal(t, "", prog.Snapshot().Doing)
+		prog.Get("step6").SetAsCurrent()
+		require.Equal(t, "step6", prog.Snapshot().Doing)
+		prog.Get("step5").SetAsCurrent()
+		require.Equal(t, "step5", prog.Snapshot().Doing)
+		prog.Get("step7").SetAsCurrent()
+		require.Equal(t, "step7", prog.Snapshot().Doing)
+		prog.Get("step7").Done()
+		require.Equal(t, "", prog.Snapshot().Doing)
+	}
+
 	// debug
 	// fmt.Println(u.PrettyJSON(prog))
 }
