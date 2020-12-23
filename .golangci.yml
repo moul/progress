@@ -31,7 +31,6 @@ linters:
     - exportloopref
     - gci
     - gochecknoinits
-    - gocognit
     - goconst
     - gocritic
     - gocyclo
