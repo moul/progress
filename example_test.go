@@ -2,6 +2,7 @@ package progress_test
 
 import (
 	"fmt"
+	"time"
 
 	"moul.io/progress"
 	"moul.io/u"
@@ -83,4 +84,45 @@ func Example() {
 	//    "started_at": "2020-12-22T20:26:05.717427484+01:00"
 	//  }
 	//}
+}
+
+func ExampleProgressSubscribe() {
+	prog := progress.New()
+	done := make(chan bool)
+	ch := make(chan *progress.Step, 0)
+	prog.Subscribe(ch)
+	go func() {
+		idx := 0
+		for step := range ch {
+			if step == nil {
+				break
+			}
+			fmt.Println(idx, step.ID, step.State)
+			idx++
+		}
+		done <- true
+	}()
+	time.Sleep(10 * time.Millisecond)
+	prog.AddStep("step1").SetDescription("hello")
+	prog.AddStep("step2")
+	prog.Get("step1").Start()
+	prog.Get("step2").Done()
+	prog.AddStep("step3")
+	prog.Get("step3").Start()
+	prog.Get("step1").Done()
+	prog.Get("step3").Done()
+	// fmt.Println(u.PrettyJSON(prog))
+	<-done
+	close(ch)
+
+	// Output:
+	// 0 step1 not started
+	// 1 step1 not started
+	// 2 step2 not started
+	// 3 step1 in progress
+	// 4 step2 done
+	// 5 step3 not started
+	// 6 step3 in progress
+	// 7 step1 done
+	// 8 step3 done
 }

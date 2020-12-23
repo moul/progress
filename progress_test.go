@@ -214,11 +214,12 @@ func TestSubscribe(t *testing.T) {
 	seen := 0
 	go func() {
 		for step := range ch {
-			seen++
 			if step == nil {
-				done <- true
+				break
 			}
+			seen++
 		}
+		done <- true
 	}()
 	time.Sleep(10 * time.Millisecond)
 	prog.AddStep("step1").SetDescription("hello")
@@ -232,5 +233,5 @@ func TestSubscribe(t *testing.T) {
 	// fmt.Println(u.PrettyJSON(prog))
 	<-done
 	close(ch)
-	require.Equal(t, seen, 10)
+	require.Equal(t, seen, 9)
 }

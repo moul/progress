@@ -18,10 +18,110 @@
 
 ## Usage
 
+[embedmd]:# (.tmp/godoc.txt txt /TYPES/ $)
+```txt
+TYPES
+
+type Progress struct {
+	Steps     []*Step   `json:"steps,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+
+	// Has unexported fields.
+}
+    Progress is the top-level object of the 'progress' library.
+
+func New() *Progress
+    New creates and returns a new Progress.
+
+func (p *Progress) AddStep(id string) *Step
+    AddStep creates and returns a new Step with the provided 'id'. A non-empty,
+    unique 'id' is required, else it will panic.
+
+func (p *Progress) Get(id string) *Step
+    Get retrieves a Step by its 'id'. A non-empty 'id' is required, else it will
+    panic. If 'id' does not match an existing step, nil is returned.
+
+func (p *Progress) MarshalJSON() ([]byte, error)
+    MarshalJSON is a custom JSON marshaler that automatically computes and
+    append the current snapshot.
+
+func (p *Progress) SafeAddStep(id string) (*Step, error)
+    SafeAddStep is equivalent to AddStep with but returns error instead of
+    panicking.
+
+func (p *Progress) Snapshot() Snapshot
+    Snapshot computes and returns the current stats of the Progress.
+
+func (p *Progress) Subscribe(subscriber chan *Step)
+    Subscribe register a provided chan as a target called each time a step is
+    changed.
+
+type Snapshot struct {
+	State              State         `json:"state,omitempty"`
+	Doing              string        `json:"doing,omitempty"`
+	NotStarted         int           `json:"not_started,omitempty"`
+	InProgress         int           `json:"in_progress,omitempty"`
+	Completed          int           `json:"completed,omitempty"`
+	Total              int           `json:"total,omitempty"`
+	Percent            float64       `json:"percent,omitempty"`
+	TotalDuration      time.Duration `json:"total_duration,omitempty"`
+	StepDuration       time.Duration `json:"step_duration,omitempty"`
+	CompletionEstimate time.Duration `json:"completion_estimate,omitempty"`
+	DoneAt             *time.Time    `json:"done_at,omitempty"`
+	StartedAt          *time.Time    `json:"started_at,omitempty"`
+}
+    Snapshot represents info and stats about a progress at a given time.
+
+type State string
+
+const (
+	StateNotStarted State = "not started"
+	StateInProgress State = "in progress"
+	StateDone       State = "done"
+)
+type Step struct {
+	ID          string      `json:"id,omitempty"`
+	Description string      `json:"description,omitempty"`
+	StartedAt   *time.Time  `json:"started_at,omitempty"`
+	DoneAt      *time.Time  `json:"done_at,omitempty"`
+	State       State       `json:"state,omitempty"`
+	Data        interface{} `json:"data,omitempty"`
+
+	// Has unexported fields.
+}
+    Step represents a progress step. It always have an 'id' and can be
+    customized using helpers.
+
+func (s *Step) Done()
+    Done marks a step as done. If the step was already done, it panics.
+
+func (s *Step) Duration() time.Duration
+    Duration computes the step duration.
+
+func (s *Step) MarshalJSON() ([]byte, error)
+    MarshalJSON is a custom JSON marshaler that automatically computes and
+    append some runtime metadata.
+
+func (s *Step) SetData(data interface{}) *Step
+    SetData sets a custom step data. It returns itself (*Step) for chaining.
+
+func (s *Step) SetDescription(desc string) *Step
+    SetDescription sets a custom step description. It returns itself (*Step) for
+    chaining.
+
+func (s *Step) Start()
+    Start marks a step as started. If a step was already InProgress or Done, it
+    panics.
+
+```
+
+## Example
+
 [embedmd]:# (example_test.go /import\ / $)
 ```go
 import (
 	"fmt"
+	"time"
 
 	"moul.io/progress"
 	"moul.io/u"
@@ -103,6 +203,47 @@ func Example() {
 	//    "started_at": "2020-12-22T20:26:05.717427484+01:00"
 	//  }
 	//}
+}
+
+func ExampleProgressSubscribe() {
+	prog := progress.New()
+	done := make(chan bool)
+	ch := make(chan *progress.Step, 0)
+	prog.Subscribe(ch)
+	go func() {
+		idx := 0
+		for step := range ch {
+			if step == nil {
+				break
+			}
+			fmt.Println(idx, step.ID, step.State)
+			idx++
+		}
+		done <- true
+	}()
+	time.Sleep(10 * time.Millisecond)
+	prog.AddStep("step1").SetDescription("hello")
+	prog.AddStep("step2")
+	prog.Get("step1").Start()
+	prog.Get("step2").Done()
+	prog.AddStep("step3")
+	prog.Get("step3").Start()
+	prog.Get("step1").Done()
+	prog.Get("step3").Done()
+	// fmt.Println(u.PrettyJSON(prog))
+	<-done
+	close(ch)
+
+	// Output:
+	// 0 step1 not started
+	// 1 step1 not started
+	// 2 step2 not started
+	// 3 step1 in progress
+	// 4 step2 done
+	// 5 step3 not started
+	// 6 step3 in progress
+	// 7 step1 done
+	// 8 step3 done
 }
 ```
 
