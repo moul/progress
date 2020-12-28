@@ -28,6 +28,12 @@ const (
 	StateDone       State = "done"
 )
 
+const (
+	notStartedProgress   = 0.0
+	defaultStartProgress = 0.5
+	doneProgress         = 1.0
+)
+
 // New creates and returns a new Progress.
 func New() *Progress {
 	return &Progress{
@@ -51,9 +57,10 @@ func (p *Progress) SafeAddStep(id string) (*Step, error) {
 		return nil, ErrStepRequiresID
 	}
 	step := &Step{
-		ID:     id,
-		State:  StateNotStarted,
-		parent: p,
+		ID:       id,
+		State:    StateNotStarted,
+		Progress: notStartedProgress,
+		parent:   p,
 	}
 
 	p.mutex.Lock()
@@ -125,7 +132,7 @@ type Snapshot struct {
 	InProgress         int           `json:"in_progress,omitempty"`
 	Completed          int           `json:"completed,omitempty"`
 	Total              int           `json:"total,omitempty"`
-	Percent            float64       `json:"percent,omitempty"`
+	Progress           float64       `json:"progress,omitempty"`
 	TotalDuration      time.Duration `json:"total_duration,omitempty"`
 	StepDuration       time.Duration `json:"step_duration,omitempty"`
 	CompletionEstimate time.Duration `json:"completion_estimate,omitempty"`
@@ -144,8 +151,8 @@ func (p *Progress) Snapshot() Snapshot {
 	}
 
 	snapshot := Snapshot{
-		Total:   len(p.Steps),
-		Percent: 0,
+		Total:    len(p.Steps),
+		Progress: 0,
 	}
 
 	doing := []string{}
@@ -181,7 +188,7 @@ func (p *Progress) Snapshot() Snapshot {
 		}
 	}
 
-	snapshot.Percent = p.Percent()
+	snapshot.Progress = p.Progress()
 
 	// compute top-level aggregates
 	{
@@ -197,7 +204,7 @@ func (p *Progress) Snapshot() Snapshot {
 			if snapshot.Completed != snapshot.Total {
 				panic(fmt.Sprintf("snapshot has a strange state: %s", u.JSON(snapshot)))
 			}
-			snapshot.Percent = 100 // avoid having 99.99999999999
+			snapshot.Progress = 1 // avoid having 0.99999999999 by adding floats together
 			snapshot.TotalDuration = snapshot.DoneAt.Sub(*snapshot.StartedAt)
 		case isInProgress:
 			snapshot.State = StateInProgress
@@ -227,25 +234,26 @@ func (p *Progress) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Percent returns the current completion percentage, it's a faster alternative to Progress.Snapshot().Percent.
-func (p *Progress) Percent() float64 {
+// Progress returns the current completion rate, it's a faster alternative to Progress.Snapshot().Progress.
+// The returned value is between 0.0 and 1.0.
+func (p *Progress) Progress() float64 {
 	total := len(p.Steps)
-	percent := float64(0)
+	progress := notStartedProgress
 	for _, step := range p.Steps {
 		switch step.State {
 		case StateNotStarted:
 			// noop
 		case StateInProgress:
 			// in-progress task count as partially done
-			percent += (float64(0.5) / float64(total)) * 100 // nolint:gomnd
+			progress += (step.Progress / float64(total))
 			// FIXME: support per-task progress
 		case StateDone:
-			percent += (float64(1) / float64(total)) * 100 // nolint:gomnd
+			progress += (doneProgress / float64(total))
 		default:
 			panic(fmt.Sprintf("step is in an unexpected state: %s", u.JSON(step)))
 		}
 	}
-	return percent
+	return progress
 }
 
 func (p *Progress) isDone() bool {
@@ -269,6 +277,7 @@ type Step struct {
 	DoneAt      *time.Time  `json:"done_at,omitempty"`
 	State       State       `json:"state,omitempty"`
 	Data        interface{} `json:"data,omitempty"`
+	Progress    float64     `json:"progress,omitempty"`
 
 	parent *Progress
 }
@@ -291,7 +300,7 @@ func (s *Step) SetData(data interface{}) *Step {
 
 // Start marks a step as started.
 // If a step was already InProgress or Done, it panics.
-func (s *Step) Start() {
+func (s *Step) Start() *Step {
 	s.parent.mutex.Lock()
 	defer s.parent.mutex.Unlock()
 	if s.State == StateInProgress {
@@ -303,11 +312,13 @@ func (s *Step) Start() {
 	s.State = StateInProgress
 	now := time.Now()
 	s.StartedAt = &now
+	s.Progress = defaultStartProgress
 	s.parent.publishStep(s)
+	return s
 }
 
 // SetAsCurrent stops all in-progress steps and start this one.
-func (s *Step) SetAsCurrent() {
+func (s *Step) SetAsCurrent() *Step {
 	s.parent.mutex.Lock()
 	defer s.parent.mutex.Unlock()
 	if s.State == StateInProgress {
@@ -324,14 +335,16 @@ func (s *Step) SetAsCurrent() {
 			s.parent.publishStep(step)
 		}
 	}
+	s.Progress = defaultStartProgress
 	s.State = StateInProgress
 	s.StartedAt = &now
 	s.parent.publishStep(s)
+	return s
 }
 
 // Done marks a step as done.
 // If the step was already done, it panics.
-func (s *Step) Done() {
+func (s *Step) Done() *Step {
 	s.parent.mutex.Lock()
 	defer s.parent.mutex.Unlock()
 	if s.State == StateDone {
@@ -347,6 +360,7 @@ func (s *Step) Done() {
 	if s.parent.isDone() {
 		s.parent.publishStep(nil)
 	}
+	return s
 }
 
 // MarshalJSON is a custom JSON marshaler that automatically computes and append some runtime metadata.
