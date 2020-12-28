@@ -282,6 +282,30 @@ type Step struct {
 	parent *Progress
 }
 
+// SetProgress sets the current step progress rate.
+// It may also update the current Step.State depending on the passed progress.
+// The value should be something between 0.0 and 1.0.
+func (s *Step) SetProgress(progress float64) *Step {
+	if progress == doneProgress {
+		return s.Done()
+	}
+
+	s.parent.mutex.Lock()
+	defer s.parent.mutex.Unlock()
+	s.Progress = progress
+	if progress == notStartedProgress {
+		s.State = StateNotStarted
+	} else {
+		s.State = StateInProgress
+		if s.StartedAt == nil {
+			now := time.Now()
+			s.StartedAt = &now
+		}
+	}
+	s.parent.publishStep(s)
+	return s
+}
+
 // SetDescription sets a custom step description.
 // It returns itself (*Step) for chaining.
 func (s *Step) SetDescription(desc string) *Step {
