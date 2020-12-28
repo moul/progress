@@ -22,8 +22,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 0, snapshot.Completed)
 		require.Equal(t, 0, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, float64(0), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 		require.Nil(t, prog.Get("step1"))
 	}
 
@@ -42,8 +42,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 1, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
 		require.NotNil(t, prog.Get("step1"))
-		require.Equal(t, float64(0), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 
 		step1 := prog.Get("step1")
 		require.NotNil(t, step1)
@@ -67,8 +67,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 2, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
 		require.NotNil(t, prog.Get("step2"))
-		require.Equal(t, float64(0), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// start the first step
@@ -86,8 +86,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 0, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
 		require.Equal(t, 1, snapshot.InProgress)
-		require.Equal(t, float64(25), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0.25), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// mark the first step as done
@@ -107,8 +107,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 1, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, float64(50), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0.5), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// mark the second step as done without starting it first
@@ -127,8 +127,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 0, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, float64(100), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(1), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// add a third step
@@ -145,8 +145,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, 66, int(snapshot.Percent))
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, 66, int(snapshot.Progress*100))
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// add a fourth step
@@ -163,8 +163,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 2, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, float64(50), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0.5), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// start step3 and step4 at the same time
@@ -181,8 +181,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 0, snapshot.NotStarted)
 		require.Equal(t, 2, snapshot.InProgress)
-		require.Equal(t, float64(75), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(0.75), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 	}
 
 	// mark step3 and step4 as done at the same time
@@ -202,8 +202,8 @@ func TestFlow(t *testing.T) {
 		require.Equal(t, 4, snapshot.Completed)
 		require.Equal(t, 0, snapshot.NotStarted)
 		require.Equal(t, 0, snapshot.InProgress)
-		require.Equal(t, float64(100), snapshot.Percent)
-		require.Equal(t, snapshot.Percent, prog.Percent())
+		require.Equal(t, float64(1), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
 
 		require.True(t, step1.Duration() > 200*time.Millisecond && step1.Duration() < 400*time.Millisecond)
 		require.Zero(t, step2.Duration())
@@ -212,19 +212,81 @@ func TestFlow(t *testing.T) {
 		require.True(t, snapshot.TotalDuration > 400*time.Millisecond && snapshot.TotalDuration < 600*time.Millisecond)
 	}
 
-	// create 3 new steps to test the Step.SetAsCurrent() helper
+	// create a new step and use SetProgress instead of Start
 	{
 		prog.AddStep("step5")
-		prog.AddStep("step6")
-		prog.AddStep("step7")
+		require.NotEmpty(t, prog.Steps)
+		require.Len(t, prog.Steps, 5)
+		require.NotNil(t, prog.Get("step5"))
+
+		snapshot := prog.Snapshot()
+		require.Equal(t, "", snapshot.Doing)
+		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, 5, snapshot.Total)
+		require.Equal(t, 4, snapshot.Completed)
+		require.Equal(t, 1, snapshot.NotStarted)
+		require.Equal(t, 0, snapshot.InProgress)
+		require.Equal(t, float64(0.8), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
+
+		prog.Get("step5").SetProgress(0)
+		snapshot = prog.Snapshot()
+		require.Equal(t, "", snapshot.Doing)
+		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, 5, snapshot.Total)
+		require.Equal(t, 4, snapshot.Completed)
+		require.Equal(t, 1, snapshot.NotStarted)
+		require.Equal(t, 0, snapshot.InProgress)
+		require.Equal(t, float64(0.8), snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
+
+		prog.Get("step5").SetProgress(0.2)
+		snapshot = prog.Snapshot()
+		require.Equal(t, "step5", snapshot.Doing)
+		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, 5, snapshot.Total)
+		require.Equal(t, 4, snapshot.Completed)
+		require.Equal(t, 0, snapshot.NotStarted)
+		require.Equal(t, 1, snapshot.InProgress)
+		require.Equal(t, 84, int(snapshot.Progress*100))
+		require.Equal(t, snapshot.Progress, prog.Progress())
+
+		prog.Get("step5").SetProgress(0.8)
+		snapshot = prog.Snapshot()
+		require.Equal(t, "step5", snapshot.Doing)
+		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, 5, snapshot.Total)
+		require.Equal(t, 4, snapshot.Completed)
+		require.Equal(t, 0, snapshot.NotStarted)
+		require.Equal(t, 1, snapshot.InProgress)
+		require.Equal(t, 96, int(snapshot.Progress*100))
+		require.Equal(t, snapshot.Progress, prog.Progress())
+
+		prog.Get("step5").SetProgress(1.0)
+		snapshot = prog.Snapshot()
+		require.Equal(t, "", snapshot.Doing)
+		require.Equal(t, progress.StateDone, snapshot.State)
+		require.Equal(t, 5, snapshot.Total)
+		require.Equal(t, 5, snapshot.Completed)
+		require.Equal(t, 0, snapshot.NotStarted)
+		require.Equal(t, 0, snapshot.InProgress)
+		require.Equal(t, 1.0, snapshot.Progress)
+		require.Equal(t, snapshot.Progress, prog.Progress())
+	}
+
+	// create 3 new steps to test the Step.SetAsCurrent() helper
+	{
+		prog.AddStep("step10")
+		prog.AddStep("step11")
+		prog.AddStep("step12")
 		require.Equal(t, "", prog.Snapshot().Doing)
-		prog.Get("step6").SetAsCurrent()
-		require.Equal(t, "step6", prog.Snapshot().Doing)
-		prog.Get("step5").SetAsCurrent()
-		require.Equal(t, "step5", prog.Snapshot().Doing)
-		prog.Get("step7").SetAsCurrent()
-		require.Equal(t, "step7", prog.Snapshot().Doing)
-		prog.Get("step7").Done()
+		prog.Get("step11").SetAsCurrent()
+		require.Equal(t, "step11", prog.Snapshot().Doing)
+		prog.Get("step10").SetAsCurrent()
+		require.Equal(t, "step10", prog.Snapshot().Doing)
+		prog.Get("step12").SetAsCurrent()
+		require.Equal(t, "step12", prog.Snapshot().Doing)
+		prog.Get("step12").Done()
 		require.Equal(t, "", prog.Snapshot().Doing)
 	}
 
