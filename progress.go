@@ -16,8 +16,8 @@ type Progress struct {
 	Steps     []*Step   `json:"steps,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 
-	mutex       sync.RWMutex
-	subscribers []chan *Step
+	mainMutex   sync.RWMutex
+	subscribers map[chan *Step]struct{}
 }
 
 type State string
@@ -32,6 +32,7 @@ const (
 	notStartedProgress   = 0.0
 	defaultStartProgress = 0.5
 	doneProgress         = 1.0
+	publishTimeout       = 1000 * time.Millisecond
 )
 
 // New creates and returns a new Progress.
@@ -63,8 +64,8 @@ func (p *Progress) SafeAddStep(id string) (*Step, error) {
 		parent:   p,
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
+	p.mainMutex.Lock()
+	defer p.mainMutex.Unlock()
 	if p.Steps == nil {
 		p.Steps = make([]*Step, 0)
 	}
@@ -82,26 +83,47 @@ func (p *Progress) SafeAddStep(id string) (*Step, error) {
 
 // publishStep iterates over subscribers and try to append a step.
 func (p *Progress) publishStep(step *Step) {
+	if len(p.subscribers) == 0 {
+		return
+	}
+
 	var stepCopyPtr *Step
 	if step != nil {
 		stepCopy := *step
 		stepCopyPtr = &stepCopy
 	}
-	for _, subscriber := range p.subscribers {
-		subscriber <- stepCopyPtr
+
+	for subscriber := range p.subscribers {
+		select {
+		case subscriber <- stepCopyPtr:
+		case <-time.After(publishTimeout):
+			// debug: fmt.Println("************** DROP **************")
+		}
 	}
 }
 
-// Subscribe register a provided chan as a target called each time a step is changed.
-func (p *Progress) Subscribe(subscriber chan *Step) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
+// Subscribe registers the provided chan as a target called each time a step is changed.
+func (p *Progress) Subscribe() chan *Step {
+	p.mainMutex.Lock()
+	subscriber := make(chan *Step, 1)
 	if p.subscribers == nil {
-		p.subscribers = make([]chan *Step, 0)
+		p.subscribers = make(map[chan *Step]struct{})
 	}
+	p.subscribers[subscriber] = struct{}{}
+	p.mainMutex.Unlock()
+	return subscriber
+}
 
-	p.subscribers = append(p.subscribers, subscriber)
+// Close cleans up the allocated ressources.
+func (p *Progress) Close() {
+	p.closeSubscribers()
+}
+
+func (p *Progress) closeSubscribers() {
+	for sub := range p.subscribers {
+		close(sub)
+		delete(p.subscribers, sub)
+	}
 }
 
 // Get retrieves a Step by its 'id'.
@@ -112,8 +134,8 @@ func (p *Progress) Get(id string) *Step {
 		panic("progress.Get requires a non-empty ID as argument.")
 	}
 
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	p.mainMutex.RLock()
+	defer p.mainMutex.RUnlock()
 
 	for _, step := range p.Steps {
 		if step.ID == id {
@@ -142,8 +164,8 @@ type Snapshot struct {
 
 // Snapshot computes and returns the current stats of the Progress.
 func (p *Progress) Snapshot() Snapshot {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	p.mainMutex.RLock()
+	defer p.mainMutex.RUnlock()
 	if len(p.Steps) == 0 {
 		return Snapshot{
 			State: StateNotStarted,
@@ -290,8 +312,8 @@ func (s *Step) SetProgress(progress float64) *Step {
 		return s.Done()
 	}
 
-	s.parent.mutex.Lock()
-	defer s.parent.mutex.Unlock()
+	s.parent.mainMutex.Lock()
+	defer s.parent.mainMutex.Unlock()
 	s.Progress = progress
 	if progress == notStartedProgress {
 		s.State = StateNotStarted
@@ -325,8 +347,8 @@ func (s *Step) SetData(data interface{}) *Step {
 // Start marks a step as started.
 // If a step was already InProgress or Done, it panics.
 func (s *Step) Start() *Step {
-	s.parent.mutex.Lock()
-	defer s.parent.mutex.Unlock()
+	s.parent.mainMutex.Lock()
+	defer s.parent.mainMutex.Unlock()
 	if s.State == StateInProgress {
 		panic("cannot Step.Start() an already in-progress step.")
 	}
@@ -343,8 +365,8 @@ func (s *Step) Start() *Step {
 
 // SetAsCurrent stops all in-progress steps and start this one.
 func (s *Step) SetAsCurrent() *Step {
-	s.parent.mutex.Lock()
-	defer s.parent.mutex.Unlock()
+	s.parent.mainMutex.Lock()
+	defer s.parent.mainMutex.Unlock()
 	if s.State == StateInProgress {
 		panic("cannot Step.Start() an already in-progress step.")
 	}
@@ -369,8 +391,8 @@ func (s *Step) SetAsCurrent() *Step {
 // Done marks a step as done.
 // If the step was already done, it panics.
 func (s *Step) Done() *Step {
-	s.parent.mutex.Lock()
-	defer s.parent.mutex.Unlock()
+	s.parent.mainMutex.Lock()
+	defer s.parent.mainMutex.Unlock()
 	if s.State == StateDone {
 		panic("cannot Step.Done() an already done step.")
 	}
@@ -382,7 +404,7 @@ func (s *Step) Done() *Step {
 	s.DoneAt = &now
 	s.parent.publishStep(s)
 	if s.parent.isDone() {
-		s.parent.publishStep(nil)
+		s.parent.closeSubscribers()
 	}
 	return s
 }

@@ -296,20 +296,19 @@ func TestFlow(t *testing.T) {
 
 func TestSubscribe(t *testing.T) {
 	prog := progress.New()
+	defer prog.Close()
 	done := make(chan bool)
-	ch := make(chan *progress.Step, 0)
-	prog.Subscribe(ch)
+	ch := prog.Subscribe()
+
 	seen := 0
 	go func() {
 		for step := range ch {
-			if step == nil {
-				break
-			}
+			_ = step
 			seen++
 		}
 		done <- true
 	}()
-	time.Sleep(10 * time.Millisecond)
+
 	prog.AddStep("step1").SetDescription("hello")
 	prog.AddStep("step2")
 	prog.Get("step1").Start()
@@ -319,7 +318,84 @@ func TestSubscribe(t *testing.T) {
 	prog.Get("step1").Done()
 	prog.Get("step3").Done()
 	// fmt.Println(u.PrettyJSON(prog))
+
 	<-done
-	close(ch)
-	require.Equal(t, seen, 9)
+	require.Equal(t, 9, seen)
+}
+
+func TestSubscribe_withConcurrency(t *testing.T) {
+	prog := progress.New()
+	defer prog.Close()
+	done := make(chan bool)
+	ch := prog.Subscribe()
+
+	seen := 0
+	go func() {
+		for step := range ch {
+			// get snapshot which is a command that locks the prog object
+			snapshot := prog.Snapshot()
+			_ = snapshot
+			// fmt.Println(snapshot)
+			if step == nil {
+				break
+			}
+			seen++
+		}
+		done <- true
+	}()
+
+	prog.AddStep("step1").SetDescription("hello")
+	prog.AddStep("step2")
+	prog.Get("step1").Start()
+	prog.Get("step2").Done()
+	prog.AddStep("step3")
+	prog.Get("step3").Start()
+	prog.Get("step1").Done()
+	prog.Get("step3").Done()
+	// fmt.Println(u.PrettyJSON(prog))
+
+	<-done
+	// require.Equal(t, 9, seen)
+	require.True(t, seen > 1)
+}
+
+func TestClose(t *testing.T) {
+	prog := progress.New()
+	prog.Close()
+	prog.Close()
+	require.True(t, true) // should not fail before this line
+}
+
+func TestSubcribe_closeReopen(t *testing.T) {
+	prog := progress.New()
+	defer prog.Close()
+
+	// add a first step, start it, done it; then, the chan should be closed
+	ch1 := prog.Subscribe()
+	prog.AddStep("step1")
+	require.NotNil(t, <-ch1)
+	prog.Get("step1").Start()
+	require.NotNil(t, <-ch1)
+	prog.Get("step1").Done()
+	require.NotNil(t, <-ch1)
+	require.Nil(t, <-ch1)
+
+	// add a new step, the previous chan should still be closed
+	prog.AddStep("step2")
+	require.Nil(t, <-ch1)
+	prog.Get("step2").Start()
+	require.Nil(t, <-ch1)
+	prog.Get("step2").Done()
+	require.Nil(t, <-ch1)
+
+	// start a new subscriber, add a new step, only the new subcriber will get the info
+	ch2 := prog.Subscribe()
+	prog.AddStep("step3")
+	require.NotNil(t, <-ch2)
+	prog.Get("step3").Start()
+	require.NotNil(t, <-ch2)
+	prog.Get("step3").Done()
+	require.NotNil(t, <-ch2)
+	require.Nil(t, <-ch2)
+	require.Nil(t, <-ch1)
 }

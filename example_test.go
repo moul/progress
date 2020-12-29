@@ -88,9 +88,10 @@ func Example() {
 
 func ExampleProgressSubscribe() {
 	prog := progress.New()
+	defer prog.Close()
 	done := make(chan bool)
-	ch := make(chan *progress.Step, 0)
-	prog.Subscribe(ch)
+	ch := prog.Subscribe()
+
 	go func() {
 		idx := 0
 		for step := range ch {
@@ -113,7 +114,6 @@ func ExampleProgressSubscribe() {
 	prog.Get("step3").Done()
 	// fmt.Println(u.PrettyJSON(prog))
 	<-done
-	close(ch)
 
 	// Output:
 	// 0 step1 not started
