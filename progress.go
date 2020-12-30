@@ -33,6 +33,9 @@ const (
 	defaultStartProgress = 0.5
 	doneProgress         = 1.0
 	publishTimeout       = 1000 * time.Millisecond
+	// based on the average usage of this library, we can't have a small number like "1" or "2".
+	// by refactoring the project, we may find a solution to update the locking strategy so we can reduce this number.
+	defaultSubscriberChanLength = 42
 )
 
 // New creates and returns a new Progress.
@@ -105,7 +108,7 @@ func (p *Progress) publishStep(step *Step) {
 // Subscribe registers the provided chan as a target called each time a step is changed.
 func (p *Progress) Subscribe() chan *Step {
 	p.mainMutex.Lock()
-	subscriber := make(chan *Step, 1)
+	subscriber := make(chan *Step, defaultSubscriberChanLength)
 	if p.subscribers == nil {
 		p.subscribers = make(map[chan *Step]struct{})
 	}
