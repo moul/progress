@@ -35,7 +35,6 @@ const (
 	publishTimeout       = 1000 * time.Millisecond
 	// based on the average usage of this library, we can't have a small number like "1" or "2".
 	// by refactoring the project, we may find a solution to update the locking strategy so we can reduce this number.
-	defaultSubscriberChanLength = 42
 )
 
 // New creates and returns a new Progress.
