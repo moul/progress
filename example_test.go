@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"moul.io/progress"
 	"moul.io/u"
+
+	"moul.io/progress"
 )
 
 func Example() {
