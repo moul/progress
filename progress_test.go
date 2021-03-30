@@ -1,11 +1,13 @@
 package progress_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"moul.io/progress"
+	"moul.io/u"
 )
 
 func TestFlow(t *testing.T) {
@@ -332,10 +334,10 @@ func TestSubscribe_withConcurrency(t *testing.T) {
 	seen := 0
 	go func() {
 		for step := range ch {
+			_ = fmt.Sprintf("step: %v", step)
 			// get snapshot which is a command that locks the prog object
 			snapshot := prog.Snapshot()
-			_ = snapshot
-			// fmt.Println(snapshot)
+			_ = fmt.Sprintf("snapshot: %v", snapshot)
 			if step == nil {
 				break
 			}
@@ -346,13 +348,30 @@ func TestSubscribe_withConcurrency(t *testing.T) {
 
 	prog.AddStep("step1").SetDescription("hello")
 	prog.AddStep("step2")
+	prog.AddStep("step3")
+	prog.AddStep("step4")
+	prog.AddStep("step5")
+	prog.AddStep("step6")
+	prog.AddStep("step7")
+	prog.AddStep("step8")
+	prog.AddStep("step9")
+	prog.AddStep("step10")
 	prog.Get("step1").Start()
 	prog.Get("step2").Done()
-	prog.AddStep("step3")
-	prog.Get("step3").Start()
-	prog.Get("step1").Done()
 	prog.Get("step3").Done()
-	// fmt.Println(u.PrettyJSON(prog))
+	prog.Get("step4").SetAsCurrent()
+	prog.Get("step5").SetAsCurrent()
+	prog.Get("step6").Start()
+	prog.Get("step7").Start()
+	prog.Get("step8").SetAsCurrent()
+	prog.Get("step9").SetAsCurrent()
+	prog.Get("step10").Start()
+	prog.AddStep("step11")
+	prog.Get("step11").Start()
+	prog.Get("step11").Done()
+	prog.Get("step10").Done()
+	prog.Get("step9").Done()
+	_ = fmt.Sprintf("result: %v", u.PrettyJSON(prog))
 
 	<-done
 	// require.Equal(t, 9, seen)
