@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"moul.io/progress"
 )
 
@@ -368,7 +369,10 @@ func TestClose(t *testing.T) {
 
 func TestSubcribe_closeReopen(t *testing.T) {
 	prog := progress.New()
-	defer prog.Close()
+
+	defer func() {
+		prog.Close()
+	}()
 
 	// add a first step, start it, done it; then, the chan should be closed
 	ch1 := prog.Subscribe()

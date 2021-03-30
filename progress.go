@@ -107,7 +107,7 @@ func (p *Progress) publishStep(step *Step) {
 // Subscribe registers the provided chan as a target called each time a step is changed.
 func (p *Progress) Subscribe() chan *Step {
 	p.mainMutex.Lock()
-	subscriber := make(chan *Step)
+	subscriber := make(chan *Step, 1)
 	if p.subscribers == nil {
 		p.subscribers = make(map[chan *Step]struct{})
 	}
