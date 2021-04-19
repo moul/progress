@@ -104,7 +104,7 @@ func TestFlow(t *testing.T) {
 
 		snapshot := prog.Snapshot()
 		require.Equal(t, "", snapshot.Doing)
-		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, progress.StateStopped, snapshot.State)
 		require.Equal(t, 2, snapshot.Total)
 		require.Equal(t, 1, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
@@ -142,7 +142,7 @@ func TestFlow(t *testing.T) {
 
 		snapshot := prog.Snapshot()
 		require.Equal(t, "", snapshot.Doing)
-		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, progress.StateStopped, snapshot.State)
 		require.Equal(t, 3, snapshot.Total)
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
@@ -160,7 +160,7 @@ func TestFlow(t *testing.T) {
 
 		snapshot := prog.Snapshot()
 		require.Equal(t, "", snapshot.Doing)
-		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, progress.StateStopped, snapshot.State)
 		require.Equal(t, 4, snapshot.Total)
 		require.Equal(t, 2, snapshot.Completed)
 		require.Equal(t, 2, snapshot.NotStarted)
@@ -223,7 +223,7 @@ func TestFlow(t *testing.T) {
 
 		snapshot := prog.Snapshot()
 		require.Equal(t, "", snapshot.Doing)
-		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, progress.StateStopped, snapshot.State)
 		require.Equal(t, 5, snapshot.Total)
 		require.Equal(t, 4, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
@@ -234,7 +234,7 @@ func TestFlow(t *testing.T) {
 		prog.Get("step5").SetProgress(0)
 		snapshot = prog.Snapshot()
 		require.Equal(t, "", snapshot.Doing)
-		require.Equal(t, progress.StateInProgress, snapshot.State)
+		require.Equal(t, progress.StateStopped, snapshot.State)
 		require.Equal(t, 5, snapshot.Total)
 		require.Equal(t, 4, snapshot.Completed)
 		require.Equal(t, 1, snapshot.NotStarted)
