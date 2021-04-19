@@ -26,6 +26,7 @@ const (
 	StateNotStarted State = "not started"
 	StateInProgress State = "in progress"
 	StateDone       State = "done"
+	StateStopped    State = "stopped"
 )
 
 const (
@@ -190,6 +191,8 @@ func (p *Progress) Snapshot() Snapshot {
 			doing = append(doing, step.title())
 		case StateDone:
 			snapshot.Completed++
+		case StateStopped:
+			panic(fmt.Sprintf("step cannot be in stopped state (yet!): %s", u.JSON(step)))
 		default:
 			panic(fmt.Sprintf("step is in an unexpected state: %s", u.JSON(step)))
 		}
@@ -220,8 +223,9 @@ func (p *Progress) Snapshot() Snapshot {
 		snapshot.Doing = strings.Join(doing, ", ")
 		var (
 			isDone       = snapshot.Completed > 0 && snapshot.InProgress == 0 && snapshot.NotStarted == 0
-			isInProgress = snapshot.Completed < snapshot.Total && (snapshot.InProgress > 0 || snapshot.Completed > 0)
+			isInProgress = snapshot.Completed < snapshot.Total && snapshot.InProgress > 0
 			isNotStarted = snapshot.Completed == 0 && snapshot.InProgress == 0
+			isStopped    = snapshot.Completed > 0 && snapshot.InProgress == 0 && snapshot.NotStarted > 0
 		)
 		switch {
 		case isDone:
@@ -238,6 +242,10 @@ func (p *Progress) Snapshot() Snapshot {
 		case isNotStarted:
 			snapshot.State = StateNotStarted
 			snapshot.DoneAt = nil
+		case isStopped:
+			snapshot.State = StateStopped
+			snapshot.DoneAt = nil
+			snapshot.TotalDuration = time.Since(*snapshot.StartedAt)
 		default:
 			panic(fmt.Sprintf("snapshot has a strange state: %s", u.JSON(snapshot)))
 		}
@@ -274,6 +282,8 @@ func (p *Progress) Progress() float64 {
 			// FIXME: support per-task progress
 		case StateDone:
 			progress += (doneProgress / float64(total))
+		case StateStopped:
+			panic(fmt.Sprintf("step cannot be in stopped state (yet!): %s", u.JSON(step)))
 		default:
 			panic(fmt.Sprintf("step is in an unexpected state: %s", u.JSON(step)))
 		}
@@ -435,6 +445,8 @@ func (s *Step) Duration() time.Duration {
 		ret = s.DoneAt.Sub(*s.StartedAt)
 	case StateNotStarted:
 		// noop
+	case StateStopped:
+		panic(fmt.Sprintf("step cannot be in stopped state (yet!): %s", u.JSON(s)))
 	default:
 		// noop
 	}

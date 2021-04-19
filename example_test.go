@@ -111,7 +111,10 @@ func ExampleProgressSubscribe() {
 	prog.AddStep("step3")
 	prog.Get("step3").Start()
 	prog.Get("step1").Done()
+	prog.AddStep("step4")
 	prog.Get("step3").Done()
+	prog.Get("step4").SetAsCurrent()
+	prog.Get("step4").Done()
 	// fmt.Println(u.PrettyJSON(prog))
 	<-done
 
@@ -124,5 +127,8 @@ func ExampleProgressSubscribe() {
 	// 5 step3 not started
 	// 6 step3 in progress
 	// 7 step1 done
-	// 8 step3 done
+	// 8 step4 not started
+	// 9 step3 done
+	// 10 step4 in progress
+	// 11 step4 done
 }
