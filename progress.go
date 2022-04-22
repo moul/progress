@@ -313,6 +313,7 @@ type Step struct {
 	State       State       `json:"state,omitempty"`
 	Data        interface{} `json:"data,omitempty"`
 	Progress    float64     `json:"progress,omitempty"`
+	Child       *Progress   `json:"child,omitempty"`
 
 	parent *Progress
 }
@@ -451,6 +452,17 @@ func (s *Step) Duration() time.Duration {
 		// noop
 	}
 	return ret
+}
+
+// SetChild configures a dedicated Progress on the Step
+func (s *Step) SetChild(prog *Progress) *Step {
+	s.Child = prog
+	if s.Child == nil {
+		return s
+	}
+	ch := prog.Subscribe()
+	_ = ch
+	return s
 }
 
 func (s *Step) title() string {

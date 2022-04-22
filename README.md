@@ -37,6 +37,9 @@ func (p *Progress) AddStep(id string) *Step
     AddStep creates and returns a new Step with the provided 'id'. A non-empty,
     unique 'id' is required, else it will panic.
 
+func (p *Progress) Close()
+    Close cleans up the allocated ressources.
+
 func (p *Progress) Get(id string) *Step
     Get retrieves a Step by its 'id'. A non-empty 'id' is required, else it will
     panic. If 'id' does not match an existing step, nil is returned.
@@ -45,9 +48,9 @@ func (p *Progress) MarshalJSON() ([]byte, error)
     MarshalJSON is a custom JSON marshaler that automatically computes and
     append the current snapshot.
 
-func (p *Progress) Percent() float64
-    Percent returns the current completion percentage, it's a faster alternative
-    to Progress.Snapshot().Percent.
+func (p *Progress) Progress() float64
+    Progress returns the current completion rate, it's a faster alternative to
+    Progress.Snapshot().Progress. The returned value is between 0.0 and 1.0.
 
 func (p *Progress) SafeAddStep(id string) (*Step, error)
     SafeAddStep is equivalent to AddStep with but returns error instead of
@@ -56,8 +59,8 @@ func (p *Progress) SafeAddStep(id string) (*Step, error)
 func (p *Progress) Snapshot() Snapshot
     Snapshot computes and returns the current stats of the Progress.
 
-func (p *Progress) Subscribe(subscriber chan *Step)
-    Subscribe register a provided chan as a target called each time a step is
+func (p *Progress) Subscribe() chan *Step
+    Subscribe registers the provided chan as a target called each time a step is
     changed.
 
 type Snapshot struct {
@@ -67,7 +70,7 @@ type Snapshot struct {
 	InProgress         int           `json:"in_progress,omitempty"`
 	Completed          int           `json:"completed,omitempty"`
 	Total              int           `json:"total,omitempty"`
-	Percent            float64       `json:"percent,omitempty"`
+	Progress           float64       `json:"progress,omitempty"`
 	TotalDuration      time.Duration `json:"total_duration,omitempty"`
 	StepDuration       time.Duration `json:"step_duration,omitempty"`
 	CompletionEstimate time.Duration `json:"completion_estimate,omitempty"`
@@ -82,6 +85,7 @@ const (
 	StateNotStarted State = "not started"
 	StateInProgress State = "in progress"
 	StateDone       State = "done"
+	StateStopped    State = "stopped"
 )
 type Step struct {
 	ID          string      `json:"id,omitempty"`
@@ -90,13 +94,15 @@ type Step struct {
 	DoneAt      *time.Time  `json:"done_at,omitempty"`
 	State       State       `json:"state,omitempty"`
 	Data        interface{} `json:"data,omitempty"`
+	Progress    float64     `json:"progress,omitempty"`
+	Child       *Progress   `json:"child,omitempty"`
 
 	// Has unexported fields.
 }
     Step represents a progress step. It always have an 'id' and can be
     customized using helpers.
 
-func (s *Step) Done()
+func (s *Step) Done() *Step
     Done marks a step as done. If the step was already done, it panics.
 
 func (s *Step) Duration() time.Duration
@@ -106,8 +112,11 @@ func (s *Step) MarshalJSON() ([]byte, error)
     MarshalJSON is a custom JSON marshaler that automatically computes and
     append some runtime metadata.
 
-func (s *Step) SetAsCurrent()
+func (s *Step) SetAsCurrent() *Step
     SetAsCurrent stops all in-progress steps and start this one.
+
+func (s *Step) SetChild(prog *Progress) *Step
+    SetChild configures a dedicated Progress on the Step
 
 func (s *Step) SetData(data interface{}) *Step
     SetData sets a custom step data. It returns itself (*Step) for chaining.
@@ -116,7 +125,12 @@ func (s *Step) SetDescription(desc string) *Step
     SetDescription sets a custom step description. It returns itself (*Step) for
     chaining.
 
-func (s *Step) Start()
+func (s *Step) SetProgress(progress float64) *Step
+    SetProgress sets the current step progress rate. It may also update the
+    current Step.State depending on the passed progress. The value should be
+    something between 0.0 and 1.0.
+
+func (s *Step) Start() *Step
     Start marks a step as started. If a step was already InProgress or Done, it
     panics.
 
@@ -214,9 +228,10 @@ func Example() {
 
 func ExampleProgressSubscribe() {
 	prog := progress.New()
+	defer prog.Close()
 	done := make(chan bool)
-	ch := make(chan *progress.Step, 0)
-	prog.Subscribe(ch)
+	ch := prog.Subscribe()
+
 	go func() {
 		idx := 0
 		for step := range ch {
@@ -236,10 +251,12 @@ func ExampleProgressSubscribe() {
 	prog.AddStep("step3")
 	prog.Get("step3").Start()
 	prog.Get("step1").Done()
+	prog.AddStep("step4")
 	prog.Get("step3").Done()
+	prog.Get("step4").SetAsCurrent()
+	prog.Get("step4").Done()
 	// fmt.Println(u.PrettyJSON(prog))
 	<-done
-	close(ch)
 
 	// Output:
 	// 0 step1 not started
@@ -250,7 +267,10 @@ func ExampleProgressSubscribe() {
 	// 5 step3 not started
 	// 6 step3 in progress
 	// 7 step1 done
-	// 8 step3 done
+	// 8 step4 not started
+	// 9 step3 done
+	// 10 step4 in progress
+	// 11 step4 done
 }
 ```
 
